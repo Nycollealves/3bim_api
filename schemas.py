@@ -1,13 +1,19 @@
-# schemas.py
 from pydantic import BaseModel
 
-class ProdutoBase(BaseModel):
+
+class FuncionarioCreate(BaseModel):
     nome: str
-    preco: float
-    quantidade: int
-class ProdutoCreate(ProdutoBase):
-    pass
-class ProdutoResponse(ProdutoBase):
+    cargo: str
+    salario: float
+    departamento: str
+
+
+class FuncionarioResponse(BaseModel):
     id: int
-class Config:
-    from_attributes = True
+    nome: str
+    cargo: str
+    salario: float
+    departamento: str
+
+    class Config:
+        from_attributes = True
