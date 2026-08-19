@@ -21,10 +21,6 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 
 
-# =========================
-# CORS
-# =========================
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -33,9 +29,7 @@ app.add_middleware(
 )
 
 
-# ==========================================================
-# PRODUTOS
-# ==========================================================
+
 
 
 # GET /produtos
@@ -131,10 +125,6 @@ def remover_produto(
 
     return
 
-
-# ==========================================================
-# FUNCIONÁRIOS
-# ==========================================================
 
 
 # GET /funcionarios
