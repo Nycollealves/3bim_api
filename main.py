@@ -1,45 +1,7 @@
-from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy.orm import Session
-from database import Base, engine, get_db
-from models import FuncionarioDB
-from schemas import FuncionarioCreate, FuncionarioResponse
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import HTTPException
 
 
-Base.metadata.create_all(bind=engine)
-
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=['*'],
-    allow_methods=['*'],
-    allow_headers=['*'],
-)
-
-
-# GET /funcionarios
-@app.get('/funcionarios', response_model=list[FuncionarioResponse])
-def listar_funcionarios(db: Session = Depends(get_db)):
-    return db.query(FuncionarioDB).all()
-
-
-# POST /funcionarios
-@app.post('/funcionarios', response_model=FuncionarioResponse, status_code=201)
-def criar_funcionario(
-    funcionario: FuncionarioCreate,
-    db: Session = Depends(get_db)
-):
-    novo_funcionario = FuncionarioDB(**funcionario.dict())
-
-    db.add(novo_funcionario)
-    db.commit()
-    db.refresh(novo_funcionario)
-
-    return novo_funcionario
-
-
-# GET /funcionarios/{id}
+# GET /funcionarios/{id} -> consulta um funcionário pelo id no banco
 @app.get('/funcionarios/{funcionario_id}', response_model=FuncionarioResponse)
 def obter_funcionario(
     funcionario_id: int,
@@ -58,7 +20,7 @@ def obter_funcionario(
     return funcionario
 
 
-# DELETE /funcionarios/{id}
+# DELETE /funcionarios/{id} -> remove um funcionário do banco
 @app.delete('/funcionarios/{funcionario_id}', status_code=204)
 def remover_funcionario(
     funcionario_id: int,
@@ -78,3 +40,31 @@ def remover_funcionario(
     db.commit()
 
     return
+
+
+# PUT /funcionarios/{id} -> atualiza um funcionário existente no banco
+@app.put('/funcionarios/{funcionario_id}', response_model=FuncionarioResponse)
+def atualizar_funcionario(
+    funcionario_id: int,
+    dados: FuncionarioCreate,
+    db: Session = Depends(get_db)
+):
+    funcionario = db.query(FuncionarioDB).filter(
+        FuncionarioDB.id == funcionario_id
+    ).first()
+
+    if funcionario is None:
+        raise HTTPException(
+            status_code=404,
+            detail='Funcionário não encontrado'
+        )
+
+    funcionario.nome = dados.nome
+    funcionario.cargo = dados.cargo
+    funcionario.salario = dados.salario
+    funcionario.departamento = dados.departamento
+
+    db.commit()
+    db.refresh(funcionario)
+
+    return funcionario
