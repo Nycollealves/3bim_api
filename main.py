@@ -1,3 +1,17 @@
+# main.py
+#
+# API FastAPI com CRUD completo de Produtos e Funcionários.
+#
+# CORREÇÃO aplicada (ver Nota_Tecnica_Falha_Startup_MySQL_SW-II.md):
+# Base.metadata.create_all(bind=engine) foi tirado do nível do módulo e
+# movido para dentro de um evento de "startup". No código original, essa
+# linha rodava assim que o Python importava main.py — inclusive quando
+# quem importava era o test_produtos.py — e isso forçava uma conexão
+# real com o MySQL mesmo em testes que usam MagicMock. Com a correção,
+# a criação das tabelas só acontece quando a aplicação é de fato
+# inicializada (uvicorn, ou TestClient usado como context manager),
+# nunca durante a simples importação do módulo.
+
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -15,12 +29,23 @@ from schemas import (
 from fastapi.middleware.cors import CORSMiddleware
 
 
-# Cria as tabelas
-Base.metadata.create_all(bind=engine)
-
 app = FastAPI()
 
 
+@app.on_event("startup")
+def criar_tabelas():
+    """
+    Executa Base.metadata.create_all APENAS quando a aplicação
+    realmente sobe (startup do FastAPI/uvicorn), e não no momento em
+    que o arquivo é importado. É isso que permite rodar os testes com
+    o MySQL desligado, já que test_produtos.py cria o TestClient sem
+    usar 'with', então o evento de startup nunca é disparado.
+    """
+    Base.metadata.create_all(bind=engine)
+
+
+# CORS liberado para qualquer origem/método/cabeçalho — apropriado para
+# desenvolvimento; em produção normalmente se restringe allow_origins.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,39 +54,42 @@ app.add_middleware(
 )
 
 
+# ============================================================
+# PRODUTOS
+# ============================================================
 
-
-
-# GET /produtos
-# Lista todos os produtos
 @app.get("/produtos", response_model=list[ProdutoResponse])
 def listar_produtos(db: Session = Depends(get_db)):
+    """GET /produtos — retorna todos os produtos cadastrados."""
     return db.query(ProdutoDB).all()
 
 
-# POST /produtos
-# Cria um novo produto
 @app.post("/produtos", response_model=ProdutoResponse, status_code=201)
 def criar_produto(
     produto: ProdutoCreate,
     db: Session = Depends(get_db)
 ):
+    """
+    POST /produtos — cria um novo produto.
+    produto.dict() converte o schema Pydantic (ProdutoCreate) em um
+    dicionário, que é "explodido" com ** para preencher os argumentos
+    do construtor de ProdutoDB (nome=..., preco=..., quantidade=...).
+    """
     novo_produto = ProdutoDB(**produto.dict())
 
-    db.add(novo_produto)
-    db.commit()
-    db.refresh(novo_produto)
+    db.add(novo_produto)      # marca o objeto para ser inserido
+    db.commit()                # efetiva a inserção no banco
+    db.refresh(novo_produto)   # recarrega o objeto (traz o 'id' gerado pelo MySQL)
 
     return novo_produto
 
 
-# GET /produtos/{id}
-# Busca um produto pelo ID
 @app.get("/produtos/{produto_id}", response_model=ProdutoResponse)
 def obter_produto(
     produto_id: int,
     db: Session = Depends(get_db)
 ):
+    """GET /produtos/{id} — busca um produto específico; 404 se não existir."""
     produto = db.query(ProdutoDB).filter(
         ProdutoDB.id == produto_id
     ).first()
@@ -75,14 +103,13 @@ def obter_produto(
     return produto
 
 
-# PUT /produtos/{id}
-# Atualiza um produto
 @app.put("/produtos/{produto_id}", response_model=ProdutoResponse)
 def atualizar_produto(
     produto_id: int,
     dados: ProdutoCreate,
     db: Session = Depends(get_db)
 ):
+    """PUT /produtos/{id} — sobrescreve todos os campos do produto."""
     produto = db.query(ProdutoDB).filter(
         ProdutoDB.id == produto_id
     ).first()
@@ -103,13 +130,12 @@ def atualizar_produto(
     return produto
 
 
-# DELETE /produtos/{id}
-# Remove um produto
 @app.delete("/produtos/{produto_id}", status_code=204)
 def remover_produto(
     produto_id: int,
     db: Session = Depends(get_db)
 ):
+    """DELETE /produtos/{id} — remove o produto; 204 não retorna corpo."""
     produto = db.query(ProdutoDB).filter(
         ProdutoDB.id == produto_id
     ).first()
@@ -126,21 +152,22 @@ def remover_produto(
     return
 
 
+# ============================================================
+# FUNCIONÁRIOS
+# ============================================================
 
-# GET /funcionarios
-# Lista todos os funcionários
 @app.get("/funcionarios", response_model=list[FuncionarioResponse])
 def listar_funcionarios(db: Session = Depends(get_db)):
+    """GET /funcionarios — retorna todos os funcionários cadastrados."""
     return db.query(FuncionarioDB).all()
 
 
-# POST /funcionarios
-# Cria um novo funcionário
 @app.post("/funcionarios", response_model=FuncionarioResponse, status_code=201)
 def criar_funcionario(
     funcionario: FuncionarioCreate,
     db: Session = Depends(get_db)
 ):
+    """POST /funcionarios — cria um novo funcionário (mesmo padrão de criar_produto)."""
     novo_funcionario = FuncionarioDB(**funcionario.dict())
 
     db.add(novo_funcionario)
@@ -150,8 +177,6 @@ def criar_funcionario(
     return novo_funcionario
 
 
-# GET /funcionarios/{id}
-# Busca um funcionário pelo ID
 @app.get(
     "/funcionarios/{funcionario_id}",
     response_model=FuncionarioResponse
@@ -160,6 +185,7 @@ def obter_funcionario(
     funcionario_id: int,
     db: Session = Depends(get_db)
 ):
+    """GET /funcionarios/{id} — busca um funcionário específico; 404 se não existir."""
     funcionario = db.query(FuncionarioDB).filter(
         FuncionarioDB.id == funcionario_id
     ).first()
@@ -173,8 +199,6 @@ def obter_funcionario(
     return funcionario
 
 
-# PUT /funcionarios/{id}
-# Atualiza um funcionário
 @app.put(
     "/funcionarios/{funcionario_id}",
     response_model=FuncionarioResponse
@@ -184,6 +208,7 @@ def atualizar_funcionario(
     dados: FuncionarioCreate,
     db: Session = Depends(get_db)
 ):
+    """PUT /funcionarios/{id} — sobrescreve todos os campos do funcionário."""
     funcionario = db.query(FuncionarioDB).filter(
         FuncionarioDB.id == funcionario_id
     ).first()
@@ -205,13 +230,12 @@ def atualizar_funcionario(
     return funcionario
 
 
-# DELETE /funcionarios/{id}
-# Remove um funcionário
 @app.delete("/funcionarios/{funcionario_id}", status_code=204)
 def remover_funcionario(
     funcionario_id: int,
     db: Session = Depends(get_db)
 ):
+    """DELETE /funcionarios/{id} — remove o funcionário; 204 não retorna corpo."""
     funcionario = db.query(FuncionarioDB).filter(
         FuncionarioDB.id == funcionario_id
     ).first()
